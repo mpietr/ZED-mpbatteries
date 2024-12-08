@@ -1,0 +1,85 @@
+---
+title: "Materials Project - analiza"
+author: "Maria Pietras"
+date: "2024-11-19"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    self_contained: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Wykorzystane biblioteki
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(corrplot)
+library(tibble)
+library(shiny)
+library(DT)
+```
+```{r helper}
+showTable <- function(table_df, round_digits=2) {
+    DT::datatable(table_df, style="bootstrap", filter = "top", rownames = FALSE, extensions = "Buttons", options = list(dom = 'Bfrtip', buttons = c('csv', 'excel', 'pdf', 'print'))) %>% formatRound(names(dplyr::select_if(table_df, is.numeric)), round_digits)
+}
+```
+
+
+## Powtarzalność wyników
+
+```{r seed}
+set.seed(42)
+```
+
+## Wczytanie danych
+
+```{r readData}
+data = read.csv('mp_batteries.csv');
+showTable(data)
+```
+
+
+## Podstawowe statystyki
+```{r summary}
+summary(data) %>% knitr::kable()
+```
+
+## Brakujące dane
+```{r missingData}
+any(is.na(data))
+```
+
+
+```{r workingIon}
+ggplot(data, aes(x = Working.Ion)) + geom_bar()
+
+```
+
+```{=html}
+<iframe height="500" width="100%" frameborder="no" src="https://mpietr.shinyapps.io/mp_batteries/"> </iframe>
+```
+
+## Korelacja między zmiennymi
+
+```{r correlation}
+M <- data %>%
+  select(where(is.numeric)) %>%
+  cor(use = "complete.obs", method = "pearson")
+
+df = data.frame(M) %>%
+  rownames_to_column() %>%
+    pivot_longer(-rowname, names_to="colname")
+
+ggplot(df, aes(colname, rowname, fill=value)) + 
+  geom_tile() +
+  scale_fill_gradient2() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  +
+  labs(title = "Wykres korelacji", x = "", y = "", fill = "Korelacja")
+
+```

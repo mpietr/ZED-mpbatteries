@@ -1,0 +1,12 @@
+name: mp_batteries
+title: mp_batteries
+username: mpietr
+account: mpietr
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 13550319
+bundleId: 9481703
+url: https://mpietr.shinyapps.io/mp_batteries/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
