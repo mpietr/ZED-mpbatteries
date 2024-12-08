@@ -1,29 +1,37 @@
 ---
-title: "Materials Project - analiza"
+title: "Materials Project - Batteries"
 author: "Maria Pietras"
-date: "2024-11-19"
+date: "`r format(Sys.time(), '%d.%M.%Y')`"
 output:
   html_document:
     toc: true
-    toc_float: true
     self_contained: false
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
-## Wykorzystane biblioteki
+# Executie summary
+
+This report presents an analysis of battery materials from the Materials Project dataset. It explores the attributes, their features and how they are correlated to each other. It attempts to summarize the trends in battery research, which has been more prominent since the popularization of electric vehicles. Regression models are build to predict the Gravimetric Capacity of batteries based on other attributes. They also serve as an experiment to see the significant impact of outliers in the dataset.
+
+# Library import
 
 ```{r}
 library(ggplot2)
+library(plotly)
 library(dplyr)
 library(tidyr)
 library(corrplot)
 library(tibble)
-library(shiny)
 library(DT)
+library(caret)
 ```
+
+
+# Helper functions
+
 ```{r helper}
 showTable <- function(table_df, round_digits=2) {
     DT::datatable(table_df, style="bootstrap", filter = "top", rownames = FALSE, extensions = "Buttons", options = list(dom = 'Bfrtip', buttons = c('csv', 'excel', 'pdf', 'print'))) %>% formatRound(names(dplyr::select_if(table_df, is.numeric)), round_digits)
@@ -31,55 +39,257 @@ showTable <- function(table_df, round_digits=2) {
 ```
 
 
-## Powtarzalność wyników
+# Repeatability of results
 
 ```{r seed}
 set.seed(42)
 ```
 
-## Wczytanie danych
+# Data import
+
+MP_Batteries is a dataset prepared in the Materials Project. The Materials Project is a multi-institution, multi-national effort to compute the properties of all inorganic materials and provide the data and associated analysis algorithms for every materials researcher free of charge. The ultimate goal of the initiative is to drastically reduce the time needed to invent new materials by focusing costly and time-consuming experiments on compounds that show the most promise computationally. [source](https://next-gen.materialsproject.org/about)
+
 
 ```{r readData}
 data = read.csv('mp_batteries.csv');
 showTable(data)
 ```
 
+The data consists of columns:
 
-## Podstawowe statystyki
+  - Battery ID: the identifier of the battery,
+  - Battery Formula: the chemical formula of the battery material,
+  - Working Ion: the main ion that is responsible for transporting charge in the battery,
+  - Charge Formula: the chemical formula of the battery material in the charged state,
+  - Formula Discharge: the chemical formula of the battery material in the discharged state,
+  - Max Delta Volume: the change in volume in % for a given voltage step using the formula: max(charge, discharge)/min(charge, discharge)-1.
+  - Average Voltage: average voltage for a given voltage step,
+  - Gravimetric Capacity: the amount of energy per unit mass (mAh/g),
+  - Volumetric Capacity: the amount of energy per unit of volume (mAh/cm³),
+  - Gravimetric Energy: energy density relative to battery mass (Wh/kg),
+  - Volumetric Energy: energy density with respect to battery volume (Wh/L),
+  - Atomic Fraction Charge: the atomic fraction of components in the charged state,
+  - Atomic Fraction Discharge: the atomic fraction of components in the discharged state,
+  - Stability Charge: the stability index of the material in the charged state,
+  - Stability Discharge: the stability index of the material in the discharged state,
+  - Steps: number of distinct voltage steps from full charge to discharge, based on stable intermediate states,
+  - Max Voltage Step: maximum absolute difference between adjacent voltage steps.
+
+
+# Basic statistics of the dataset
+
+## Dimensions
+
+```{r dim}
+dim(data)
+```
+
+## Summary
+
 ```{r summary}
 summary(data) %>% knitr::kable()
 ```
 
-## Brakujące dane
+# Missing values
+
 ```{r missingData}
 any(is.na(data))
 ```
 
+There are no missing values in the dataset.
 
-```{r workingIon}
-ggplot(data, aes(x = Working.Ion)) + geom_bar()
+# Attribute analysis
+
+## Working Iron
+
+```{r workingIon, echo=FALSE}
+ggplot(data, aes(x = Working.Ion)) + geom_bar() + theme_minimal()
 
 ```
+
+The most popular working ion is Lithium (Li), with around four times as many occurrences as Calcium (Ca), Magnesium (Mg), Sodium (Na), or Zinc (Zn). Aluminum (Al), Cesium (Cs), Potassium (K), Rubidium (Rb), and Yttrium (Y) belong to minorities.
+
+## Density of numerical attributes
 
 ```{=html}
 <iframe height="500" width="100%" frameborder="no" src="https://mpietr.shinyapps.io/mp_batteries/"> </iframe>
 ```
 
-## Korelacja między zmiennymi
+Above interactive graphs (hosted on [shinyapps.io](https://mpietr.shinyapps.io/mp_batteries/)) show the density of the rest of the numerical attributes. By looking at the shape of the graphs, we can observe that there are outstanding outliers present. 
 
-```{r correlation}
+## Boxplots of numerical attributes
+
+```{r boxplot, fig.width=10, fig.height=20, echo=FALSE}
+data %>%
+  select_if(is.numeric) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(y = value)) +
+  geom_boxplot(fill = "darkblue", alpha = 0.25, color = "black") +
+  facet_wrap(~ name, scales = "free", nrow = 3, ncol = 4) +
+  labs(x = "Attributes", y = "Values") +
+  theme_minimal()
+```
+
+The outliers can also be observed on the boxplots. Attributes like Gravimetric Capacity or Volumetric Energy have very high ranges, while attributes like Atomic Friction Charge/Discharge, Max Voltage Step or Stability Charge are confined to smaller ranges (averaging between 0 and 1). Some attributes show small variability with tightly packed plots (like Max Voltage Step or Steps) while others, such as Atomic Friction Discharge, display higher variability.
+
+# Attribute correlation
+
+[Spearman's rank correlation coefficient ($\rho$)](https://en.wikipedia.org/wiki/Spearman%27s_rank_correlation_coefficient) has been chosen for the correlation calculation as it is less sensitive to outliers than, for example, Pearson's. 
+
+The values range from $-1$ to $1$:
+
+  - $\rho=1$: perfect association of rank,
+  - $\rho=-1$: perfect negative association of rank,
+  - $\rho=0$: no association between ranks.
+
+```{r correlation, echo=FALSE}
 M <- data %>%
   select(where(is.numeric)) %>%
-  cor(use = "complete.obs", method = "pearson")
+  cor(use = "complete.obs", method = "spearman")
 
 df = data.frame(M) %>%
   rownames_to_column() %>%
     pivot_longer(-rowname, names_to="colname")
 
-ggplot(df, aes(colname, rowname, fill=value)) + 
+plot <- ggplot(df, aes(colname, rowname, fill=value)) + 
   geom_tile() +
   scale_fill_gradient2() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))  +
-  labs(title = "Wykres korelacji", x = "", y = "", fill = "Korelacja")
+  labs(x = "", y = "", fill = "Correlation")
+
+ggplotly(plot)
+```
+
+Max Voltage Step and Steps show the highest value of Spearman's Coefficient of around 0.995. Volumetric Energy and Capacity are highly correlated with each other, and a similar situation can be observed for Gravimetric Energy and Capacity. Average Voltage is also significantly correlated with Gravimetric Energy and Volumetric Energy. Atomic Friction Charge and Discharge are correlated with each other as well. Spearman's coefficient is the lowest for Average Voltage and Stability Discharge, amounting to -0.4, wchich means some negative association.
+There are also a few pairs that are not correlated at all, for example Max Voltage Step and Stability Charge or Average Voltage and Gravimetric Capacity.
+
+# Trends
+
+The popularization of electrical vehicles (EVs) has increased the demand for fast-charging and high-energy batteries with as high cycle life as possible. The growing environmental awareness in society also contributes to the priority of battery materials research. Scientists explore various new ideas of battery components to imporve their performance in different applications.
+
+New possibilities of working ions such as Potassium, Magnesium, Aluminum, Sodium are explored as an alternative to more traditional battery chemistries, like in the case of Lithium based batteries. The research aims to help find batteries with improved properties as well as to mitigate ethical, environmental and supply chain risks.
+
+Solid state batteries are being developed. In these batteries liquid electrolyte is replaced with a solid electrolyte, potentially improving energy density and lifespan, but most importantly decreasing the possibility of inflammation. This is especially vital in the EVs and customer electronics industries. 
+
+# Prediction
+
+## Attribute selection
+
+Based on the analysis of the attributes and their correlations, I have made the choice to predict Gravimetric Capacity based on Atomic Friction Discharge, Gravimetric Energy and Max Delta Volume.
+
+```{r attributeSelection}
+model_data <- data %>% select(Atomic.Fraction.Discharge, Gravimetric.Energy, Max.Delta.Volume, Gravimetric.Capacity)
+```
+
+
+## Train and test datasets
+
+The train and test datasets have been split in the ratio of 75% to 25%.
+
+```{r trainTest}
+partition <- createDataPartition(model_data$Gravimetric.Capacity, p = 0.75, list = FALSE)
+
+train <- model_data[partition, ]
+test <- model_data[-partition, ]
+```
+
+## Training
+
+The model is repeatedly cross-validated in the process of training.
+
+```{r training}
+ctrl <- trainControl(method = "repeatedcv", number = 5, repeats = 10)
+
+model <- lm(Gravimetric.Capacity ~ ., data = train)
+
+summary(model)
+```
+
+
+## Predictions and scoring
+
+```{r predictions}
+predictions <- predict(model, newdata = test)
+
+rmse <- sqrt(mean((predictions - test$Gravimetric.Capacity)^2))
+
+rmse
+```
+
+
+```{r predictionsVisualization, echo=FALSE}
+plot_data <- data.frame(
+  actual = test$Gravimetric.Capacity,
+  predicted = predictions
+)
+
+# Step 4: Plot Predicted vs Actual values using ggplot2 
+ggplot(plot_data, aes(x = actual, y = predicted)) +
+  geom_point(color = "darkblue") +          # scatter plot for actual vs predicted
+  geom_abline(slope = 1, intercept = 0, color = "red") +  # y = x line
+  labs(title = "Predicted vs Actual Gravimetric Capacity",
+       x = "Actual Gravimetric Capacity (mAh/g)",
+       y = "Predicted Gravimetric Capacity (mAh/g)") +
+  theme_minimal()
+```
+
+
+The Root Mean Square Error of above 100 seems quite high considering the fact that it is close to 1st Quantile (88) and Median (131).
+
+## Model with removed outliers
+
+To see how much the outliers affect the performance, a new model has been prepared. It was trained on a dataset with outliers removed for Gravimetric Capacity based on [Interquantile Range (IQR)](https://en.wikipedia.org/wiki/Interquartile_range#Outliers).
+
+```{r removedOutliersPrediction}
+
+Q1 <- quantile(data$Gravimetric.Capacity, 0.25)
+Q3 <- quantile(data$Gravimetric.Capacity, 0.75)
+IQR <- Q3 - Q1
+lower_bound <- Q1 - 1.5 * IQR 
+upper_bound <- Q3 + 1.5 * IQR
+
+data_no_outliers <- data[data$Gravimetric.Capacity >= lower_bound & 
+                         data$Gravimetric.Capacity <= upper_bound, ]
+  
+new_model_data <- data_no_outliers %>% select(Atomic.Fraction.Discharge, Gravimetric.Energy, Max.Delta.Volume, Gravimetric.Capacity)
+
+partition <- createDataPartition(new_model_data$Gravimetric.Capacity, p = 0.75, list = FALSE)
+
+new_train <- new_model_data[partition, ]
+new_test <- new_model_data[-partition, ]
+
+ctrl <- trainControl(method = "repeatedcv", number = 5, repeats = 10)
+
+model <- lm(Gravimetric.Capacity ~ ., data = new_train)
+
+summary(model)
+
+new_predictions <- predict(model, newdata = new_test)
+
+rmse <- sqrt(mean((new_predictions - new_test$Gravimetric.Capacity)^2))
+
+rmse
 
 ```
+
+```{r removedOutliersPredictionsVisualization, echo=FALSE}
+plot_data <- data.frame(
+  actual = new_test$Gravimetric.Capacity,
+  predicted = new_predictions
+)
+
+# Step 4: Plot Predicted vs Actual values using ggplot2 
+ggplot(plot_data, aes(x = actual, y = predicted)) +
+  geom_point(color = "darkblue") +          # scatter plot for actual vs predicted
+  geom_abline(slope = 1, intercept = 0, color = "red") +  # y = x line
+  labs(title = "Predicted vs Actual Gravimetric Capacity",
+       x = "Actual Gravimetric Capacity (mAh/g)",
+       y = "Predicted Gravimetric Capacity (mAh/g)") +
+  theme_minimal()
+```
+
+The removal of outliers significantly improved the RMSE. The graph is more concentrated and the model could better adjust to the values of the attributes.
+
+## Conclusions
+
+It is possible to predict Gravimetric Capacity based on Atomic Friction Discharge, Gravimetric Energy and Max Delta Volume, but the model does not perform well with outliers, which make a significant part of the dataset. 
