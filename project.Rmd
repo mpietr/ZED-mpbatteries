@@ -27,6 +27,7 @@ library(corrplot)
 library(tibble)
 library(DT)
 library(caret)
+library(Metrics)
 ```
 
 
@@ -67,7 +68,7 @@ The data consists of columns:
   - Gravimetric Capacity: the amount of energy per unit mass (mAh/g),
   - Volumetric Capacity: the amount of energy per unit of volume (mAh/cm³),
   - Gravimetric Energy: energy density relative to battery mass (Wh/kg),
-  - Volumetric Energy: energy density with respect to battery volume (Wh/L),
+  - Volumetric Energy: energy density relative to battery volume (Wh/L),
   - Atomic Fraction Charge: the atomic fraction of components in the charged state,
   - Atomic Fraction Discharge: the atomic fraction of components in the discharged state,
   - Stability Charge: the stability index of the material in the charged state,
@@ -100,7 +101,7 @@ There are no missing values in the dataset.
 
 # Attribute analysis
 
-## Working Iron
+## Working Ion
 
 ```{r workingIon, echo=FALSE}
 ggplot(data, aes(x = Working.Ion)) + geom_bar() + theme_minimal()
@@ -175,7 +176,7 @@ Solid state batteries are being developed. In these batteries liquid electrolyte
 
 ## Attribute selection
 
-Based on the analysis of the attributes and their correlations, I have made the choice to predict Gravimetric Capacity based on Atomic Friction Discharge, Gravimetric Energy and Max Delta Volume.
+Based on the analysis of the attributes and their correlations, I have made the choice to predict Gravimetric Capacity based on Atomic Friction Discharge, Gravimetric Energy and Max Delta Volume. Volumetric Capacity is also highly correlated with Gravimetric Capacity, but since both of the attributes describe capacity (one with relation to mass and the other with relation to volume), it might not be useful to predict one based on the other.
 
 ```{r attributeSelection}
 model_data <- data %>% select(Atomic.Fraction.Discharge, Gravimetric.Energy, Max.Delta.Volume, Gravimetric.Capacity)
@@ -211,9 +212,7 @@ summary(model)
 ```{r predictions}
 predictions <- predict(model, newdata = test)
 
-rmse <- sqrt(mean((predictions - test$Gravimetric.Capacity)^2))
-
-rmse
+rmse(test$Gravimetric.Capacity, predictions)
 ```
 
 
@@ -222,11 +221,10 @@ plot_data <- data.frame(
   actual = test$Gravimetric.Capacity,
   predicted = predictions
 )
-
-# Step 4: Plot Predicted vs Actual values using ggplot2 
+ 
 ggplot(plot_data, aes(x = actual, y = predicted)) +
-  geom_point(color = "darkblue") +          # scatter plot for actual vs predicted
-  geom_abline(slope = 1, intercept = 0, color = "red") +  # y = x line
+  geom_point(color = "darkblue") +
+  geom_abline(slope = 1, intercept = 0, color = "red") +
   labs(title = "Predicted vs Actual Gravimetric Capacity",
        x = "Actual Gravimetric Capacity (mAh/g)",
        y = "Predicted Gravimetric Capacity (mAh/g)") +
@@ -266,9 +264,7 @@ summary(model)
 
 new_predictions <- predict(model, newdata = new_test)
 
-rmse <- sqrt(mean((new_predictions - new_test$Gravimetric.Capacity)^2))
-
-rmse
+rmse(new_test$Gravimetric.Capacity, new_predictions)
 
 ```
 
@@ -278,10 +274,9 @@ plot_data <- data.frame(
   predicted = new_predictions
 )
 
-# Step 4: Plot Predicted vs Actual values using ggplot2 
 ggplot(plot_data, aes(x = actual, y = predicted)) +
-  geom_point(color = "darkblue") +          # scatter plot for actual vs predicted
-  geom_abline(slope = 1, intercept = 0, color = "red") +  # y = x line
+  geom_point(color = "darkblue") +
+  geom_abline(slope = 1, intercept = 0, color = "red") +
   labs(title = "Predicted vs Actual Gravimetric Capacity",
        x = "Actual Gravimetric Capacity (mAh/g)",
        y = "Predicted Gravimetric Capacity (mAh/g)") +
