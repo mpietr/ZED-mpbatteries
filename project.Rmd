@@ -100,6 +100,14 @@ any(is.na(data))
 
 There are no missing values in the dataset.
 
+# Duplicated values
+
+```{r duplicatedData}
+any(duplicated(data))
+```
+
+There are no duplicated values in the dataset.
+
 # Attribute analysis
 
 ## Working Ion
