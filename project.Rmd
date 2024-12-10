@@ -14,7 +14,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 # Executie summary
 
-This report presents an analysis of battery materials from the Materials Project dataset. It explores the attributes, their features and how they are correlated to each other. It attempts to summarize the trends in battery research, which has been more prominent since the popularization of electric vehicles. Regression models are build to predict the Gravimetric Capacity of batteries based on other attributes. They also serve as an experiment to see the significant impact of outliers in the dataset.
+This report presents an analysis of battery materials from the Materials Project dataset. It explores the components of the most popular batteries, determining that Lithium is by far the most common one. Strong correlations between aspects like Average Voltage and Energy are discovered. Prediction models are build to predict the Gravimetric Capacity of batteries based on other attributes. The first model's performance is unsatisfactory, so another one is build. The second model is based on data that does not contain outliers, and shows a notable improvement. It serves as an experiment to see the significance of the outliers in the dataset.
 
 # Library import
 
@@ -110,13 +110,29 @@ ggplot(data, aes(x = Working.Ion)) + geom_bar() + theme_minimal()
 
 The most popular working ion is Lithium (Li), with around four times as many occurrences as Calcium (Ca), Magnesium (Mg), Sodium (Na), or Zinc (Zn). Aluminum (Al), Cesium (Cs), Potassium (K), Rubidium (Rb), and Yttrium (Y) belong to minorities.
 
+## Top 10 battery formulas
+
+```{r batteryFormula, echo=FALSE}
+top10 <- data %>%
+  count(Battery.Formula, sort = TRUE) %>%
+  slice_max(n, n = 10) %>%
+  pull(Battery.Formula)
+
+
+top10_data <- data %>%
+  filter(Battery.Formula %in% top10)
+
+ggplot(top10_data, aes(x = Battery.Formula)) + geom_bar() +  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
 ## Density of numerical attributes
 
 ```{=html}
 <iframe height="500" width="100%" frameborder="no" src="https://mpietr.shinyapps.io/mp_batteries/"> </iframe>
 ```
 
-Above interactive graphs (hosted on [shinyapps.io](https://mpietr.shinyapps.io/mp_batteries/)) show the density of the rest of the numerical attributes. By looking at the shape of the graphs, we can observe that there are outstanding outliers present. 
+Above interactive graphs (hosted on [shinyapps.io](https://mpietr.shinyapps.io/mp_batteries/)) show the density of the numerical attributes. By looking at the shape of the graphs, we can observe that there are outstanding outliers present. 
 
 ## Boxplots of numerical attributes
 
@@ -166,11 +182,9 @@ There are also a few pairs that are not correlated at all, for example Max Volta
 
 # Trends
 
-The popularization of electrical vehicles (EVs) has increased the demand for fast-charging and high-energy batteries with as high cycle life as possible. The growing environmental awareness in society also contributes to the priority of battery materials research. Scientists explore various new ideas of battery components to imporve their performance in different applications.
+The popularization of electrical vehicles (EVs) has increased the demand for fast-charging and high-energy batteries with as high cycle life as possible. The growing environmental awareness in society also contributes to the priority of battery materials research. Scientists explore various new ideas of battery components to improve their performance in different applications.
 
-New possibilities of working ions such as Potassium, Magnesium, Aluminum, Sodium are explored as an alternative to more traditional battery chemistries, like in the case of Lithium based batteries. The research aims to help find batteries with improved properties as well as to mitigate ethical, environmental and supply chain risks.
-
-Solid state batteries are being developed. In these batteries liquid electrolyte is replaced with a solid electrolyte, potentially improving energy density and lifespan, but most importantly decreasing the possibility of inflammation. This is especially vital in the EVs and customer electronics industries. 
+While traditional batteries like Lithium are still the most popular, with the top 10 battery formulas all containing Lithium, new alternatives are being explored. Using working ions such as Potassium, Magnesium, Aluminum or Sodium could help mitigate ethical, environmental or supply chain risks.
 
 # Prediction
 
@@ -196,12 +210,12 @@ test <- model_data[-partition, ]
 
 ## Training
 
-The model is repeatedly cross-validated in the process of training.
+The RandomForest Regression model is repeatedly cross-validated in the process of training.
 
 ```{r training}
-ctrl <- trainControl(method = "repeatedcv", number = 5, repeats = 10)
+ctrl <- trainControl(method = "repeatedcv", number = 5, repeats = 5)
 
-model <- lm(Gravimetric.Capacity ~ ., data = train)
+model <- train(Gravimetric.Capacity ~ ., data = train,  method = "rf", trControl = ctrl, ntree = 10)
 
 summary(model)
 ```
@@ -232,7 +246,7 @@ ggplot(plot_data, aes(x = actual, y = predicted)) +
 ```
 
 
-The Root Mean Square Error of above 100 seems quite high considering the fact that it is close to 1st Quantile (88) and Median (131).
+The Root Mean Square Error of around above 60 might not be satisfactory as it is around 50% of the median of the dataset.
 
 ## Model with removed outliers
 
@@ -256,9 +270,9 @@ partition <- createDataPartition(new_model_data$Gravimetric.Capacity, p = 0.75, 
 new_train <- new_model_data[partition, ]
 new_test <- new_model_data[-partition, ]
 
-ctrl <- trainControl(method = "repeatedcv", number = 5, repeats = 10)
+ctrl <- trainControl(method = "repeatedcv", number = 5, repeats = 5)
 
-model <- lm(Gravimetric.Capacity ~ ., data = new_train)
+model <- train(Gravimetric.Capacity ~ ., data = train,  method = "rf", trControl = ctrl, ntree = 10)
 
 summary(model)
 
@@ -283,8 +297,8 @@ ggplot(plot_data, aes(x = actual, y = predicted)) +
   theme_minimal()
 ```
 
-The removal of outliers significantly improved the RMSE. The graph is more concentrated and the model could better adjust to the values of the attributes.
+The removal of outliers improved the RMSE.
 
 ## Conclusions
 
-It is possible to predict Gravimetric Capacity based on Atomic Friction Discharge, Gravimetric Energy and Max Delta Volume, but the model does not perform well with outliers, which make a significant part of the dataset. 
+It is possible to predict Gravimetric Capacity based on Atomic Friction Discharge, Gravimetric Energy and Max Delta Volume, but the model performs better without outliers. However, they make a significant part of the dataset. 
