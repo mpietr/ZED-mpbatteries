@@ -1,7 +1,7 @@
 ---
 title: "Materials Project - Batteries"
 author: "Maria Pietras"
-date: "`r format(Sys.time(), '%d.%M.%Y')`"
+date: "`r format(Sys.time(), '%d.%m.%Y')`"
 output:
   html_document:
     toc: true
